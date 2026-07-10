@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { pool } from "./db";
 import { analyserPlainte } from "./ia";
+import { notifierPoliceNationale } from "./police-api";
 
 async function journaliser(utilisateur: string, action: string, details: string) {
   await pool.query(
@@ -74,15 +75,29 @@ export async function deposerPlainte(formData: FormData) {
     [pl.id, numero.replace("RSP", "DOS")]
   );
 
-  // Connexion API Police Nationale Congolaise : notification automatique de l'accusé
+  // Connexion RÉELLE API Police Nationale Congolaise : notification automatique de l'accusé
   const accuse = get("accuse_nom");
   if (accuse) {
-    const apiRef = `PNC-API-${Math.floor(100000 + Math.random() * 900000)}`;
+    const lieu = `Commissariat Central — ${get("ville") || "Kinshasa"}`;
+    const dateConv = new Date(Date.now() + 7 * 86400000);
+    const pnc = await notifierPoliceNationale({
+      dossier_numero: numero.replace("RSP", "DOS"),
+      plainte_numero: numero,
+      accuse_nom: accuse,
+      accuse_telephone: get("accuse_telephone"),
+      accuse_adresse: get("accuse_adresse"),
+      infraction: t?.nom ?? "Non précisé",
+      gravite: analyse.score_gravite,
+      date_convocation: dateConv.toISOString(),
+      lieu,
+      details: `Plainte ${numero} — score IA ${analyse.score_points} points. Convocation automatique générée par RESPECT RDC 360 AI.`,
+    });
     await pool.query(
       `INSERT INTO convocations (dossier_id,date_convocation,lieu,statut,api_police_ref)
-       VALUES ($1, NOW() + INTERVAL '7 days', $2, 'notifie', $3)`,
-      [ds.id, `Commissariat Central — ${get("ville") || "Kinshasa"}`, apiRef]
+       VALUES ($1, $2, $3, $4, $5)`,
+      [ds.id, dateConv, lieu, pnc.statut, pnc.reference]
     );
+    await journaliser("systeme", "API_PNC", `Dossier ${numero.replace("RSP", "DOS")} — ${pnc.mode === "api_reelle" ? "transmis au Système Digital PNC" : "repli local"} (${pnc.reference})`);
   }
 
   await journaliser("public", "DEPOT_PLAINTE", `Plainte ${numero} enregistrée — gravité ${analyse.score_gravite}`);
@@ -216,12 +231,34 @@ export async function envoyerConvocation(formData: FormData) {
   const dossierId = Number(formData.get("dossier_id"));
   const lieu = (formData.get("lieu") as string | null)?.trim() || "Commissariat Central";
   const dateStr = formData.get("date_convocation") as string | null;
-  const apiRef = `PNC-API-${Math.floor(100000 + Math.random() * 900000)}`;
+  const dateConv = dateStr ? new Date(dateStr) : new Date(Date.now() + 7 * 86400000);
+
+  const { rows: [info] } = await pool.query(
+    `SELECT d.numero, pl.numero AS plainte_numero, pl.accuse_nom, pl.accuse_telephone, pl.accuse_adresse,
+            pl.score_gravite, t.nom AS infraction
+     FROM dossiers d
+     JOIN plaintes pl ON pl.id = d.plainte_id
+     LEFT JOIN types_infraction t ON t.id = pl.type_infraction_id
+     WHERE d.id = $1`, [dossierId]);
+
+  const pnc = await notifierPoliceNationale({
+    dossier_numero: info?.numero ?? `DOS-${dossierId}`,
+    plainte_numero: info?.plainte_numero,
+    accuse_nom: info?.accuse_nom,
+    accuse_telephone: info?.accuse_telephone,
+    accuse_adresse: info?.accuse_adresse,
+    infraction: info?.infraction,
+    gravite: info?.score_gravite,
+    date_convocation: dateConv.toISOString(),
+    lieu,
+    details: "Convocation émise manuellement par l'autorité depuis le tableau de bord RESPECT RDC 360 AI.",
+  });
+
   await pool.query(
-    "INSERT INTO convocations (dossier_id,date_convocation,lieu,statut,api_police_ref) VALUES ($1,$2,$3,'notifie',$4)",
-    [dossierId, dateStr ? new Date(dateStr) : new Date(Date.now() + 7 * 86400000), lieu, apiRef]
+    "INSERT INTO convocations (dossier_id,date_convocation,lieu,statut,api_police_ref) VALUES ($1,$2,$3,$4,$5)",
+    [dossierId, dateConv, lieu, pnc.statut, pnc.reference]
   );
-  await journaliser("admin", "CONVOCATION_API_PNC", `Dossier #${dossierId} — convocation transmise via API Police Nationale (${apiRef})`);
+  await journaliser("admin", "CONVOCATION_API_PNC", `Dossier ${info?.numero ?? dossierId} — ${pnc.mode === "api_reelle" ? "transmis au Système Digital PNC" : "repli local"} (${pnc.reference})`);
   revalidatePath("/dashboard/dossiers");
 }
 
