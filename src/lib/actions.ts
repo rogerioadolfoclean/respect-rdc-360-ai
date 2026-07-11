@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { pool } from "./db";
-import { analyserPlainte } from "./ia";
+import { analyserPlainteIA } from "./ia-claude";
 import { notifierPoliceNationale } from "./police-api";
 
 async function journaliser(utilisateur: string, action: string, details: string) {
@@ -41,7 +41,7 @@ export async function deposerPlainte(formData: FormData) {
     ? await pool.query("SELECT nom FROM types_infraction WHERE id=$1", [typeId])
     : { rows: [{ nom: "Non précisé" }] };
 
-  const analyse = analyserPlainte({
+  const analyse = await analyserPlainteIA({
     description,
     victime_mineure: mineure,
     diffusion_publique: diffusion,
@@ -55,12 +55,14 @@ export async function deposerPlainte(formData: FormData) {
   const { rows: [pl] } = await pool.query(
     `INSERT INTO plaintes (numero,victime_nom,victime_telephone,victime_email,victime_adresse,victime_sexe,victime_age,victime_mineure,
      accuse_nom,accuse_telephone,accuse_adresse,type_infraction_id,description_faits,canal,province_id,ville,commune,
-     diffusion_publique,menace_de_mort,repetition,statut,score_gravite,score_points,rapport_ia)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'recue',$21,$22,$23) RETURNING id`,
+     diffusion_publique,menace_de_mort,repetition,statut,score_gravite,score_points,rapport_ia,ia_mode,
+     piece_identite_type,piece_identite_numero,identite_verifiee)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'recue',$21,$22,$23,$24,$25,$26,$27) RETURNING id`,
     [numero, victime_nom, get("victime_telephone"), get("victime_email"), get("victime_adresse"),
      get("victime_sexe"), age, mineure, get("accuse_nom"), get("accuse_telephone"), get("accuse_adresse"),
      typeId, description, "en_ligne", Number(get("province_id")) || null, get("ville"), get("commune"),
-     diffusion, menaceMort, repetition, analyse.score_gravite, analyse.score_points, analyse.rapport]
+     diffusion, menaceMort, repetition, analyse.score_gravite, analyse.score_points, analyse.rapport, analyse.mode,
+     get("piece_identite_type"), get("piece_identite_numero"), Boolean(get("piece_identite_numero"))]
   );
 
   for (const p of preuves) {
@@ -312,6 +314,37 @@ export async function ajouterUtilisateur(formData: FormData) {
   await journaliser("admin", "CREATION_UTILISATEUR", `${email} (${role})`);
   revalidatePath("/dashboard/utilisateurs");
   return { ok: true };
+}
+
+export async function reanalyserPlainte(formData: FormData) {
+  const id = Number(formData.get("plainte_id"));
+  const { rows: [pl] } = await pool.query(
+    `SELECT pl.*, t.nom AS type_infraction,
+       (SELECT COUNT(*)::int FROM preuves WHERE plainte_id = pl.id) AS nb_preuves
+     FROM plaintes pl
+     LEFT JOIN types_infraction t ON t.id = pl.type_infraction_id
+     WHERE pl.id = $1`, [id]);
+  if (!pl) return;
+
+  const analyse = await analyserPlainteIA({
+    description: pl.description_faits,
+    victime_mineure: pl.victime_mineure,
+    diffusion_publique: pl.diffusion_publique,
+    menace_de_mort: pl.menace_de_mort,
+    repetition: pl.repetition,
+    nb_preuves: pl.nb_preuves,
+    type_infraction: pl.type_infraction ?? "Non précisé",
+    numero: pl.numero,
+  });
+
+  await pool.query(
+    "UPDATE plaintes SET score_gravite=$1, score_points=$2, rapport_ia=$3, ia_mode=$4 WHERE id=$5",
+    [analyse.score_gravite, analyse.score_points, analyse.rapport, analyse.mode, id]
+  );
+  await journaliser("admin", "REANALYSE_IA", `Plainte ${pl.numero} réanalysée (${analyse.mode}) — gravité ${analyse.score_gravite}`);
+  revalidatePath("/dashboard/ia");
+  revalidatePath(`/dashboard/plaintes/${id}`);
+  revalidatePath("/dashboard");
 }
 
 export async function basculerUtilisateur(formData: FormData) {

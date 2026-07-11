@@ -111,7 +111,25 @@ export default function PlainteForm({ provinces, types }: { provinces: Ref[]; ty
             <label className={etiquette}>Commune</label>
             <input name="commune" className={champ} placeholder="Ex : Gombe" />
           </div>
+          <div>
+            <label className={etiquette}>Pièce d&apos;identité</label>
+            <select name="piece_identite_type" className={champ} defaultValue="">
+              <option value="">— Sélectionner —</option>
+              <option value="carte_nationale">Carte nationale</option>
+              <option value="passeport">Passeport</option>
+              <option value="carte_electeur">Carte d&apos;électeur</option>
+              <option value="permis_conduire">Permis de conduire</option>
+            </select>
+          </div>
+          <div>
+            <label className={etiquette}>Numéro de la pièce</label>
+            <input name="piece_identite_numero" className={champ} placeholder="N° de la pièce d'identité" />
+          </div>
         </div>
+        <p className="mt-3 text-xs text-slate-500">
+          🪪 Module d&apos;identification : la vérification d&apos;identité (biométrie, empreintes digitales,
+          reconnaissance faciale) est effectuée par les services compétents lors du traitement du dossier.
+        </p>
       </fieldset>
 
       {/* FAITS */}

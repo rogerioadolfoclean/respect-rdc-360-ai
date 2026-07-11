@@ -37,6 +37,16 @@ export default async function DetailPlainte({ params }: { params: Promise<{ id: 
             <div><span className="text-slate-500 text-xs">Téléphone :</span><br />{plainte.victime_telephone ?? "—"}</div>
             <div><span className="text-slate-500 text-xs">Sexe / Âge :</span><br />{plainte.victime_sexe === "M" ? "Homme" : plainte.victime_sexe === "F" ? "Femme" : "—"} · {plainte.victime_age ?? "—"} ans</div>
             <div><span className="text-slate-500 text-xs">Localisation :</span><br />{[plainte.province, plainte.ville, plainte.commune].filter(Boolean).join(", ") || "—"}</div>
+            <div>
+              <span className="text-slate-500 text-xs">🪪 Pièce d&apos;identité :</span><br />
+              {plainte.piece_identite_numero
+                ? <>
+                    <strong>{({ carte_nationale: "Carte nationale", passeport: "Passeport", carte_electeur: "Carte d'électeur", permis_conduire: "Permis de conduire" } as Record<string, string>)[plainte.piece_identite_type] ?? plainte.piece_identite_type}</strong>
+                    {" "}· <span className="font-mono">{plainte.piece_identite_numero}</span>
+                    {plainte.identite_verifiee && <span className="ml-1 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 rounded font-bold">DÉCLARÉE</span>}
+                  </>
+                : "Non fournie"}
+            </div>
           </div>
           <h2 className="font-black text-navy-900 pt-2 border-t border-slate-100">⚠️ Personne mise en cause</h2>
           <div className="grid grid-cols-2 gap-2">
@@ -64,7 +74,12 @@ export default async function DetailPlainte({ params }: { params: Promise<{ id: 
 
         {/* RAPPORT IA */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h2 className="font-black text-navy-900 mb-3">🤖 Rapport préliminaire — Intelligence Artificielle</h2>
+          <h2 className="font-black text-navy-900 mb-3">
+            🤖 Rapport préliminaire — Intelligence Artificielle{" "}
+            {plainte.ia_mode === "claude"
+              ? <span className="text-[11px] font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full align-middle">Claude · Anthropic</span>
+              : <span className="text-[11px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full align-middle">Moteur local</span>}
+          </h2>
           <JaugeGravite gravite={plainte.score_gravite} />
           <pre className="mt-4 text-xs whitespace-pre-wrap bg-navy-950 text-blue-100 rounded-lg p-4 font-mono max-h-96 overflow-y-auto">{plainte.rapport_ia ?? "Aucun rapport."}</pre>
         </div>

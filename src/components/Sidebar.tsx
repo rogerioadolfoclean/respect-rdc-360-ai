@@ -8,6 +8,7 @@ const LIENS = [
   { href: "/dashboard/plaintes", label: "Plaintes", icone: "📥" },
   { href: "/dashboard/dossiers", label: "Dossiers", icone: "📁" },
   { href: "/dashboard/mediations", label: "Médiations", icone: "🤝" },
+  { href: "/dashboard/ia", label: "Intelligence Artificielle", icone: "🤖" },
   { href: "/dashboard/sanctions", label: "Sanctions", icone: "⚖️" },
   { href: "/dashboard/statistiques", label: "Statistiques", icone: "📈" },
   { href: "/dashboard/utilisateurs", label: "Utilisateurs", icone: "👥" },
